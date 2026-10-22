@@ -1,0 +1,53 @@
+{
+  "project": "Manga ZZ",
+  "design_origin": "new original theme inspired by requested dark neon manga-reader video style",
+  "corner_radius_dp": {
+    "small": 12,
+    "card": 18,
+    "hero": 22
+  },
+  "spacing_dp": [
+    4,
+    8,
+    12,
+    16,
+    24,
+    32
+  ],
+  "typeface": "sans-serif Android system",
+  "themes": {
+    "ocean": {
+      "background": "#070D17",
+      "panel": "#0F1B2D",
+      "accent": "#26D9F7"
+    },
+    "red": {
+      "background": "#070D17",
+      "panel": "#0F1B2D",
+      "accent": "#F04A68"
+    },
+    "jade": {
+      "background": "#070D17",
+      "panel": "#0F1B2D",
+      "accent": "#4FE2B2"
+    },
+    "violet": {
+      "background": "#070D17",
+      "panel": "#0F1B2D",
+      "accent": "#BE91FF"
+    },
+    "gold": {
+      "background": "#070D17",
+      "panel": "#0F1B2D",
+      "accent": "#E9C77B"
+    }
+  },
+  "motion": {
+    "screen_fade_duration_ms": 220,
+    "lottie_assets": "app/src/main/res/raw/xw_*.json"
+  },
+  "figma_note": "Import SVG files into your Figma design. Community designs require their own per-author license checks.",
+  "direction": "rtl",
+  "language": "ar",
+  "source": "Original design tokens prepared for this project, not downloaded from Figma Community."
+}
