@@ -25,7 +25,7 @@ import java.util.UUID
 private class ZZTab(val id:String=UUID.randomUUID().toString(), val web:WebView, var url:String)
 
 @SuppressLint("SetJavaScriptEnabled")
-@Composable fun BrowserScreen(initialUrl:String,accent:Color,onSave:(String,String)->Unit){
+@Composable fun BrowserScreen(initialUrl:String,accent:Color,onSave:(String,String)->Unit,onDownload:(String)->Unit={}){
     val ctx=LocalContext.current
     val tabs=remember { mutableStateListOf<ZZTab>() }
     var active by remember { mutableIntStateOf(0) }
@@ -94,11 +94,15 @@ private class ZZTab(val id:String=UUID.randomUUID().toString(), val web:WebView,
         AnimatedVisibility(load in 1..99){LinearProgressIndicator(progress={load/100f},modifier=Modifier.fillMaxWidth(),color=accent)}
         if(error.isNotBlank()) Text(error,color=Color(0xFFFF788C),fontSize=12.sp,modifier=Modifier.padding(8.dp))
         // Each WebView instance remains alive while other tabs are selected.
-        if(tab!=null) AndroidView(factory={
+        if(tab!=null) key(tab.id) { AndroidView(factory={
             (tab.web.parent as? ViewGroup)?.removeView(tab.web)
             tab.web
         },update={ view->
             if(view!==tab.web){ /* AndroidView is keyed with the tab ID below; no redirect needed. */ }
-        },modifier=Modifier.weight(1f).fillMaxWidth().background(Color.White))
+        },modifier=Modifier.weight(1f).fillMaxWidth().background(Color.White)) }
+        if(!fullscreen && tab!=null) Row(Modifier.fillMaxWidth().padding(vertical=7.dp),horizontalArrangement=Arrangement.spacedBy(7.dp)) {
+            NeonButton("حفظ في المكتبة",accent,{onSave(tab.web.title?:"صفحة مانجا",tab.web.url?:input)},Modifier.weight(1f),selected=true)
+            NeonButton("تنزيل الرابط",accent,{onDownload(tab.web.url?:input)},Modifier.weight(1f))
+        }
     }
 }

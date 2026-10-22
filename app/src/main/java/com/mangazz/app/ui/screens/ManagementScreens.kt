@@ -19,10 +19,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 
 @Composable
-fun DownloadsScreen(accent:Color){
+fun DownloadsScreen(accent:Color,initialUrl:String=""){
     val ctx=LocalContext.current
     val repo=remember { DownloadRepository(ctx) }
-    var url by remember { mutableStateOf("") }
+    var url by remember(initialUrl) { mutableStateOf(initialUrl) }
     var error by remember { mutableStateOf("") }
     var refresh by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit){ while(isActive){ refresh++;delay(1500) } }
@@ -71,7 +71,7 @@ fun SettingsScreen(theme:String,reading:String,accent:Color,onTheme:(String)->Un
             Spacer(Modifier.height(9.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(8.dp)){
                 listOf("blue" to "الأزرق", "red" to "الأحمر", "green" to "الأخضر", "purple" to "البنفسجي", "gold" to "الذهبي").forEach{(id,label)->
-                    NeonButton(label,accent,{onTheme(id)},selected=theme==id)
+                    NeonButton(label,themeAccent(id),{onTheme(id)},selected=theme==id)
                 }
             }
         }
@@ -96,7 +96,7 @@ fun SettingsScreen(theme:String,reading:String,accent:Color,onTheme:(String)->Un
             NeonButton("فتح مدير التنزيلات",accent,onDownloads,Modifier.fillMaxWidth())
         }
         Spacer(Modifier.height(12.dp))
-        Text("Manga ZZ — إصدار تطوير 0.1.0 • التشغيل داخل WebView يخضع لقيود الموقع الأصلي",color=TextDim,fontSize=12.sp)
+        Text("Manga ZZ — إصدار تطوير 0.2.0 • التشغيل داخل WebView يخضع لقيود الموقع الأصلي",color=TextDim,fontSize=12.sp)
     }
 }
 

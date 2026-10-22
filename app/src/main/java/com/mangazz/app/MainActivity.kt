@@ -27,6 +27,10 @@ import com.mangazz.app.ui.*
 import com.mangazz.app.ui.screens.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import com.mangazz.integration.MangaPage
+import java.io.File
+import org.json.JSONObject
+import com.mangazz.integration.SourceRulesStore
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState:Bundle?) {
@@ -37,7 +41,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-enum class Screen(val ar:String){ HOME("الرئيسية"),SOURCES("المصادر"),LIBRARY("المكتبة"),DETAIL("التفاصيل"),BROWSER("المتصفح"),READER("القارئ"),DOWNLOADS("التنزيلات"),SETTINGS("الإعدادات"),BACKUP("النسخ الاحتياطي") }
+enum class Screen(val ar:String){ HOME("الرئيسية"),SOURCES("المصادر"),LIBRARY("المكتبة"),DETAIL("التفاصيل"),BROWSER("المتصفح"),READER("القارئ"),REMOTE_READER("صفحات الفصل"),DOWNLOADS("التنزيلات"),SETTINGS("الإعدادات"),BACKUP("النسخ الاحتياطي") }
 
 @Composable fun MangaZZ(dao:CatalogDao,settings:LocalSettings) {
     val context=androidx.compose.ui.platform.LocalContext.current
@@ -47,11 +51,15 @@ enum class Screen(val ar:String){ HOME("الرئيسية"),SOURCES("المصاد
     val folders by dao.folders().collectAsState(initial=emptyList())
     val theme by settings.theme.collectAsState(initial="blue")
     val reading by settings.reading.collectAsState(initial="عمودي")
-    val accent=themeAccent(theme)
+    val colors=v2Palette(theme)
+    val accent=colors.accent
     var screen by remember { mutableStateOf(Screen.HOME) }
     var chosen by remember { mutableStateOf<Manga?>(null) }
     var startingUrl by remember { mutableStateOf("https://mangadex.org/") }
     var importedManga by remember { mutableLongStateOf(-1L) }
+    var remotePages by remember { mutableStateOf<List<Page>>(emptyList()) }
+    var remoteTitle by remember { mutableStateOf("") }
+    var pendingDownloadUrl by remember { mutableStateOf("") }
     fun go(s:Screen){screen=s}
     fun openSite(url:String){startingUrl=url;go(Screen.BROWSER)}
     fun toast(s:String){Toast.makeText(context,s,Toast.LENGTH_LONG).show()}
@@ -68,21 +76,29 @@ enum class Screen(val ar:String){ HOME("الرئيسية"),SOURCES("المصاد
     val export=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri->
         if(uri!=null) scope.launch { try {
             val allPages=manga.flatMap { dao.pages(it.id).first() }
-            context.contentResolver.openOutputStream(uri)?.use { it.write(Backup.export(sources,manga,folders,allPages).toByteArray(Charsets.UTF_8)) }
-            toast("تم تصدير النسخة المحلية")
+            val json=JSONObject(Backup.export(sources,manga,folders,allPages))
+                .put("cssRules",SourceRulesStore(context).exportRules())
+                .put("themeV2",theme).put("readingModeV2",reading)
+            context.contentResolver.openOutputStream(uri)?.use { it.write(json.toString(2).toByteArray(Charsets.UTF_8)) }
+            toast("تم تصدير المكتبة والثيمات وقواعد المصادر")
         }catch(e:Exception){toast(e.message?:"فشل التصدير")} }
     }
     val restore=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri->
         if(uri!=null) scope.launch {try {
             val text=context.contentResolver.openInputStream(uri)?.bufferedReader()?.use{it.readText()}?:error("تعذر فتح النسخة")
             val backup=Backup.parse(text)
+            val metadata=JSONObject(text)
             dao.replaceAll(backup.sources,backup.manga,backup.folders,backup.pages)
-            chosen=null;toast("تمت استعادة البيانات الوصفية؛ ملفات الصور تحتاج إعادة ربط")
+            metadata.optJSONObject("cssRules")?.let { SourceRulesStore(context).importRules(it) }
+            metadata.optString("themeV2").takeIf { it in listOf("blue","red","green","purple","gold") }?.let { settings.setTheme(it) }
+            metadata.optString("readingModeV2").takeIf { it in listOf("عمودي","أفقي") }?.let { settings.setReading(it) }
+            chosen=null;toast("تمت استعادة المكتبة والثيم؛ أعد ربط صور الجهاز إذا لزم")
         } catch(e:Exception){toast(e.message?:"فشل الاستيراد")} }
     }
-    MaterialTheme(colorScheme=darkColorScheme(primary=accent,background=Background,surface=SurfaceGlass,onSurface=TextBright,onBackground=TextBright)) {
-        Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF071528),Background,Color(0xFF020911))))) {
-            if(screen!=Screen.READER){Column(Modifier.fillMaxWidth().padding(top=10.dp,bottom=6.dp),horizontalAlignment=Alignment.CenterHorizontally){
+    CompositionLocalProvider(LocalZzPalette provides colors) {
+    MaterialTheme(colorScheme=darkColorScheme(primary=accent,background=colors.background,surface=colors.surface,onSurface=colors.text,onBackground=colors.text)) {
+        Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(colors.surface,colors.background,colors.background)))) {
+            if(screen!=Screen.READER && screen!=Screen.REMOTE_READER){Column(Modifier.fillMaxWidth().padding(top=10.dp,bottom=6.dp),horizontalAlignment=Alignment.CenterHorizontally){
                 Text("Manga ZZ",color=TextBright,fontSize=31.sp,style=MaterialTheme.typography.headlineLarge)
                 Text("عالم المانجا بين يديك",color=TextDim,fontSize=13.sp)
             }}
@@ -90,26 +106,53 @@ enum class Screen(val ar:String){ HOME("الرئيسية"),SOURCES("المصاد
                 AnimatedContent(screen,transitionSpec={fadeIn(tween(190))+slideInHorizontally(tween(190)){it/6} togetherWith fadeOut(tween(110))},label="navigate") { target ->
                     when(target) {
                         Screen.HOME -> HomeScreen(manga,sources,accent,onSources={go(Screen.SOURCES)},onLibrary={go(Screen.LIBRARY)},onDetail={chosen=it;go(Screen.DETAIL)},onBrowser=::openSite)
-                        Screen.SOURCES -> SourcesScreen(sources,accent,onOpen=::openSite,onAdd={name,url->scope.launch{try{dao.addSource(Source(name=name,url=safeWebUrl(url)))}catch(e:Exception){toast(e.message?:"خطأ")}}},onUpdate={scope.launch {dao.updateSource(it)}},onDelete={scope.launch {dao.deleteSource(it)}})
-                        Screen.LIBRARY -> LibraryScreen(manga,folders,accent,onSelect={chosen=it;go(Screen.DETAIL)},onFavorite={scope.launch{dao.updateManga(it.copy(favorite=!it.favorite))}},onAdd={title,url->scope.launch{try{dao.addManga(Manga(title=title,url=safeWebUrl(url)))}catch(e:Exception){toast(e.message?:"خطأ في الرابط")}}},onFolder={scope.launch{dao.addFolder(Folder(name=it))}},onDelete={scope.launch{dao.deleteManga(it);dao.deletePages(it.id)}})
+                        Screen.SOURCES -> SourcesScreenV2(sources,accent,onOpen=::openSite,onAdd={name,url->scope.launch{try{
+                            val result=dao.addSource(Source(name=name,url=safeWebUrl(url)))
+                            toast(if(result==-1L)"المصدر موجود من قبل" else "تم حفظ المصدر")
+                        }catch(e:Exception){toast(e.message?:"فشل الحفظ")}}},onUpdate={scope.launch {try {dao.updateSource(it);toast("تم تعديل المصدر")}catch(e:Exception){toast(e.message?:"تعذر التعديل")}}},onDelete={scope.launch {dao.deleteSource(it);toast("تم حذف المصدر")}})
+                        Screen.LIBRARY -> LibraryScreenV2(manga,folders,accent,onSelect={chosen=it;go(Screen.DETAIL)},onFavorite={scope.launch{dao.updateManga(it.copy(favorite=!it.favorite))}},onAdd={title,url->scope.launch{try{dao.addManga(Manga(title=title,url=safeWebUrl(url)))}catch(e:Exception){toast(e.message?:"خطأ في الرابط")}}},onFolder={scope.launch{dao.addFolder(Folder(name=it))}},onDelete={scope.launch{dao.deletePages(it.id);dao.deleteManga(it)}},onMove={b,f->scope.launch{dao.updateManga(b.copy(folder=f))}})
                         Screen.DETAIL -> { val book=chosen?.let{c->manga.firstOrNull{it.id==c.id}?:c}; if(book!=null) {
                             val pages by dao.pages(book.id).collectAsState(initial=emptyList())
-                            DetailScreen(book,pages.size,accent,onBack={go(Screen.LIBRARY)},onRead={chosen=book;go(Screen.READER)},onOpen={openSite(book.url)},onPick={importedManga=book.id;images.launch(arrayOf("image/*"))},onFavorite={scope.launch{dao.updateManga(book.copy(favorite=!book.favorite))}})
+                            DetailScreen(book,pages.size,accent,onBack={go(Screen.LIBRARY)},onRead={chosen=book;go(Screen.READER)},onOpen={openSite(book.url)},onPick={importedManga=book.id;images.launch(arrayOf("image/*"))},onFavorite={scope.launch{dao.updateManga(book.copy(favorite=!book.favorite))}},extra={
+                                ChapterSectionV2(book,accent,onReadRemote={found,title->
+                                    remoteTitle=title
+                                    remotePages=found.mapIndexed { i,page->Page(book.id,i,page.imageUrl) }
+                                    screen=Screen.REMOTE_READER
+                                },onDownloadComplete={title,files->scope.launch{
+                                    val previous=dao.pages(book.id).first()
+                                    val start=(previous.maxOfOrNull{it.position}?:-1)+1
+                                    dao.addPages(files.mapIndexed {i,file->Page(book.id,start+i,Uri.fromFile(file).toString())})
+                                    dao.updateManga(book.copy(pages=start+files.size))
+                                    toast("تم تنزيل الفصل وإضافته للقارئ: $title")
+                                }})
+                            })
                         }else BlankState("اختر مانجا من المكتبة") }
-                        Screen.BROWSER -> BrowserScreen(startingUrl,accent,onSave={title,url->scope.launch{try{dao.addManga(Manga(title=title.ifBlank{url},url=safeWebUrl(url)));toast("تم الحفظ في المكتبة") }catch(e:Exception){toast(e.message?:"الرابط محفوظ أو غير صالح")}}})
+                        Screen.BROWSER -> BrowserScreen(startingUrl,accent,onSave={title,url->scope.launch{try{
+                            val result=dao.addManga(Manga(title=title.ifBlank{url},url=safeWebUrl(url)))
+                            toast(if(result==-1L)"هذا الرابط محفوظ مسبقًا" else "تم حفظ الرابط في المكتبة")
+                        }catch(e:Exception){toast(e.message?:"الرابط غير صالح")}}},onDownload={url->
+                            pendingDownloadUrl=url;go(Screen.DOWNLOADS)
+                        })
                         Screen.READER -> { val book=chosen; if(book!=null) {
                             val pages by dao.pages(book.id).collectAsState(initial=emptyList())
                             ReaderScreen(book,pages,reading,accent,onBack={go(Screen.DETAIL)},onImport={importedManga=book.id;images.launch(arrayOf("image/*"))},onMode={scope.launch{settings.setReading(it)}},onProgress={page->scope.launch{dao.updateManga(book.copy(page=page,pages=pages.size,lastRead=System.currentTimeMillis()))}})
                         }else BlankState("افتح عملًا من المكتبة") }
-                        Screen.DOWNLOADS -> DownloadsScreen(accent)
+                        Screen.REMOTE_READER -> {
+                            val book=chosen
+                            if(book!=null)ReaderScreen(book.copy(title=remoteTitle),remotePages,reading,accent,
+                                onBack={go(Screen.DETAIL)},onImport={toast("للاحتفاظ بالصفحات، نزّل الفصل المصرّح به أولًا")},
+                                onMode={scope.launch{settings.setReading(it)}},onProgress={})
+                            else BlankState("لا توجد صفحات للفصل")
+                        }
+                        Screen.DOWNLOADS -> DownloadsScreen(accent,initialUrl=pendingDownloadUrl)
                         Screen.SETTINGS -> SettingsScreen(theme,reading,accent,onTheme={scope.launch{settings.setTheme(it)}},onReading={scope.launch{settings.setReading(it)}},onBackup={go(Screen.BACKUP)},onDownloads={go(Screen.DOWNLOADS)})
                         Screen.BACKUP -> BackupScreen(sources.size,manga.size,accent,onExport={export.launch("MangaZZ-Backup.json")},onRestore={restore.launch(arrayOf("application/json","text/plain"))})
                     }
                 }
             }
-            if(screen!=Screen.READER && screen!=Screen.BROWSER) {
+            if(screen!=Screen.READER && screen!=Screen.REMOTE_READER && screen!=Screen.BROWSER) {
                 val bottom=listOf(Triple(Screen.HOME,Icons.Default.Home,"الرئيسية"),Triple(Screen.SOURCES,Icons.Default.Language,"المصادر"),Triple(Screen.LIBRARY,Icons.Default.CollectionsBookmark,"المكتبة"),Triple(Screen.DOWNLOADS,Icons.Default.Download,"تنزيلات"),Triple(Screen.SETTINGS,Icons.Default.Settings,"الإعدادات"))
-                Row(Modifier.fillMaxWidth().background(SurfaceGlass).border(1.dp,Edge).padding(vertical=8.dp),horizontalArrangement=Arrangement.SpaceAround) {
+                Row(Modifier.fillMaxWidth().background(colors.surface).border(1.dp,colors.border).padding(vertical=8.dp),horizontalArrangement=Arrangement.SpaceAround) {
                     bottom.forEach{(page,icon,title)->
                         val active=page==screen
                         Column(Modifier.weight(1f).clickable{go(page)}.padding(vertical=3.dp),horizontalAlignment=Alignment.CenterHorizontally){
@@ -121,4 +164,5 @@ enum class Screen(val ar:String){ HOME("الرئيسية"),SOURCES("المصاد
             }
         }
     }
+}
 }

@@ -137,7 +137,7 @@ import com.mangazz.app.ui.*
     if(newFolder) AlertDialog(onDismissRequest={newFolder=false},title={Text("مجلد جديد")},text={ZZTextField(folderName,{folderName=it},"اسم المجلد")},confirmButton={TextButton(onClick={if(folderName.isNotBlank()){onFolder(folderName.trim());newFolder=false;folderName=""}}){Text("إنشاء")}},dismissButton={TextButton(onClick={newFolder=false}){Text("إلغاء")}})
 }
 
-@Composable fun DetailScreen(book:Manga,pageCount:Int,accent:Color,onBack:()->Unit,onRead:()->Unit,onOpen:()->Unit,onPick:()->Unit,onFavorite:()->Unit){
+@Composable fun DetailScreen(book:Manga,pageCount:Int,accent:Color,onBack:()->Unit,onRead:()->Unit,onOpen:()->Unit,onPick:()->Unit,onFavorite:()->Unit,extra:@Composable ()->Unit={}){
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)){
         Row(verticalAlignment=Alignment.CenterVertically){IconButton(onClick=onBack){Icon(Icons.Default.ArrowBack,null,tint=accent)};Headline("تفاصيل المانجا")}
         Glass(Modifier.fillMaxWidth()){
@@ -154,6 +154,7 @@ import com.mangazz.app.ui.*
             Spacer(Modifier.height(8.dp));NeonButton("فتح الموقع الداخلي",accent,onOpen,Modifier.fillMaxWidth())
         }
         Headline("الفصول والصفحات")
-        BlankState("لا يتم تخمين الفصول من أي موقع. القراءة المحلية تتطلب صورًا تختارها بنفسك.")
+        BlankState("للاستخراج الآلي تحتاج إعداد قواعد CSS لمصدر يجيز الوصول إلى محتواه.")
+        extra()
     }
 }

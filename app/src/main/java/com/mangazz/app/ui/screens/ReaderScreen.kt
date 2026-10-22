@@ -40,6 +40,10 @@ import kotlinx.coroutines.launch
     DisposableEffect(translator){onDispose{translator.close()}}
     fun scan(){
         val page=pages.getOrNull(current)?:return
+        if(page.imageUri.startsWith("https://")){
+            error="التعرف على النص يحتاج تنزيل الصفحة أولًا، وبعدها افتحها محليًا"
+            return
+        }
         recognized="جارٍ التعرف على النص...";translateResult="";error=""
         try{
             val image=InputImage.fromFilePath(ctx,Uri.parse(page.imageUri))
