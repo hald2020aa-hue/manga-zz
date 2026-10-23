@@ -19,7 +19,8 @@ import androidx.compose.ui.platform.LocalContext
 @Composable fun SourcesScreenV2(sources:List<Source>,accent:Color,onOpen:(String)->Unit,
     onAdd:(String,String)->Unit,onUpdate:(Source)->Unit,onDelete:(Source)->Unit){
     val p=LocalZzPalette.current
-    val rules=remember { SourceRulesStore(LocalContext.current) }
+    val context = LocalContext.current
+    val rules = remember(context) { SourceRulesStore(context) }
     var query by remember { mutableStateOf("") }
     var editing by remember { mutableStateOf<Source?>(null) }
     var modal by remember { mutableStateOf(false) }
