@@ -21,12 +21,25 @@ import kotlinx.coroutines.isActive
 @Composable
 fun DownloadsScreen(accent:Color,initialUrl:String=""){
     val ctx=LocalContext.current
+    val motion=LocalZZMotionController.current
     val repo=remember { DownloadRepository(ctx) }
     var url by remember(initialUrl) { mutableStateOf(initialUrl) }
     var error by remember { mutableStateOf("") }
     var refresh by remember { mutableIntStateOf(0) }
+    val seenStates=remember { mutableStateMapOf<Long,String>() }
     LaunchedEffect(Unit){ while(isActive){ refresh++;delay(1500) } }
     val records=remember(refresh){ runCatching{repo.list()}.getOrElse{error=it.localizedMessage?:"تعذر قراءة سجل التنزيلات"; emptyList()} }
+    LaunchedEffect(records) {
+        for(entry in records){
+            val old=seenStates.put(entry.id,entry.state)
+            if(old!=null && old!=entry.state){
+                when(entry.state){
+                    "مكتمل"->motion.show(ZZMotionAssets.downloadCompleted,"اكتمل تنزيل ${entry.name}")
+                    "فشل"->motion.show(ZZMotionAssets.failed,"فشل تنزيل ${entry.name}")
+                }
+            }
+        }
+    }
     Column(Modifier.fillMaxSize().padding(horizontal=16.dp)){
         Headline("التنزيلات")
         Text("تنزيل ملفات HTTPS المباشرة التي تسمح بها مواقعها. لا يتم استخراج فصول محمية أو تجاوز أذونات المواقع.",color=TextDim,fontSize=12.sp)
@@ -34,8 +47,9 @@ fun DownloadsScreen(accent:Color,initialUrl:String=""){
         Glass(Modifier.fillMaxWidth()){
             ZZTextField(url,{url=it},"رابط ملف مباشر HTTPS",Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
-            NeonButton("بدء التنزيل",accent,{
-                try{repo.enqueue(url);url="";error="";refresh++}catch(e:Exception){error=e.localizedMessage?:"تعذر تنزيل هذا الرابط"}
+            ZZIconAction("بدء التنزيل",com.mangazz.app.R.drawable.ic_zz_download,{
+                try{repo.enqueue(url);motion.show(ZZMotionAssets.downloadStarted,"دخل الملف قائمة التنزيل");url="";error="";refresh++}
+                catch(e:Exception){error=e.localizedMessage?:"تعذر تنزيل هذا الرابط";motion.show(ZZMotionAssets.failed,"تعذّر بدء التنزيل")}
             },Modifier.fillMaxWidth(),selected=true)
             if(error.isNotBlank())Text(error,color=Color(0xFFFF7488),fontSize=12.sp)
         }
@@ -53,6 +67,7 @@ fun DownloadsScreen(accent:Color,initialUrl:String=""){
                     }
                     IconButton(onClick={repo.remove(entry.id);refresh++}){Icon(Icons.Default.Delete,"حذف سجل التنزيل والملف",tint=Color(0xFFFF6680))}
                 }
+                if(entry.state=="جارٍ التنزيل") ZZMotion(com.mangazz.app.R.raw.xw_download_progress,Modifier.size(40.dp),repeat=true)
                 if(entry.total>0)LinearProgressIndicator(progress={entry.percent/100f},modifier=Modifier.fillMaxWidth().padding(top=6.dp),color=accent)
                 if(entry.state=="فشل")Text("رمز الخطأ: ${entry.reason}",color=TextDim,fontSize=11.sp)
             }}
@@ -114,14 +129,14 @@ fun BackupScreen(sourceCount:Int,mangaCount:Int,accent:Color,onExport:()->Unit,o
         Spacer(Modifier.height(12.dp))
         Glass(Modifier.fillMaxWidth()){
             Row(verticalAlignment=Alignment.CenterVertically){ Icon(Icons.Default.FileUpload,null,tint=accent);Spacer(Modifier.width(8.dp));Headline("تصدير JSON") }
-            NeonButton("تصدير مكتبتك ومصادرك",accent,onExport,Modifier.fillMaxWidth(),selected=true)
+            ZZIconAction("تصدير مكتبتك ومصادرك",com.mangazz.app.R.drawable.ic_zz_backup,onExport,Modifier.fillMaxWidth(),selected=true)
         }
         Spacer(Modifier.height(12.dp))
         Glass(Modifier.fillMaxWidth()){
             Row(verticalAlignment=Alignment.CenterVertically){ Icon(Icons.Default.Restore,null,tint=accent);Spacer(Modifier.width(8.dp));Headline("استيراد JSON") }
             Text("تنبيه: الاستيراد يستبدل البيانات الموجودة، ولا يعيد تنزيل صور القراءة.",color=TextDim,fontSize=12.sp)
             Spacer(Modifier.height(9.dp))
-            NeonButton("اختيار نسخة للاستعادة",accent,onRestore,Modifier.fillMaxWidth())
+            ZZIconAction("اختيار نسخة للاستعادة",com.mangazz.app.R.drawable.ic_zz_backup,onRestore,Modifier.fillMaxWidth())
         }
     }
 }

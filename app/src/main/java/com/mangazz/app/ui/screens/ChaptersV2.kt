@@ -27,9 +27,10 @@ import java.io.File
     onReadRemote:(List<MangaPage>,String)->Unit,
     onDownloadComplete:(String,List<File>)->Unit){
     val ctx=LocalContext.current
+    val motion=LocalZZMotionController.current
     val scope=rememberCoroutineScope()
-    val sourceRules=remember{SourceRulesStore(ctx)}
-    val store=remember{ChapterStore(ctx)}
+    val sourceRules=remember(ctx){SourceRulesStore(ctx)}
+    val store=remember(ctx){ChapterStore(ctx)}
     val rules=sourceRules.get(book.url)
     var chapters by remember(book.url){mutableStateOf<List<MangaChapter>>(emptyList())}
     var status by remember{mutableStateOf("")}
@@ -41,7 +42,7 @@ import java.io.File
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.comicbook+zip")){uri->
         val source=cbzToShare
         if(uri!=null && source!=null)scope.launch{runCatching{ctx.contentResolver.openOutputStream(uri)?.use{source.inputStream().use { input -> input.copyTo(it) }}}
-            .onSuccess{status="تم تصدير CBZ"}.onFailure{status="فشل تصدير CBZ: ${it.message}"}}
+            .onSuccess{status="تم تصدير CBZ";motion.show(ZZMotionAssets.downloadCompleted,"تم تصدير CBZ")}.onFailure{status="فشل تصدير CBZ: ${it.message}";motion.show(ZZMotionAssets.failed,"فشل تصدير CBZ")}}
     }
     fun configured():MangaSource?{
         val r=sourceRules.get(book.url)
@@ -55,11 +56,12 @@ import java.io.File
         V2Action("اكتشاف الفصول",{
             val source=configured()
             if(source!=null) operation=scope.launch{busy=true;status="جارٍ قراءة الفصول..."
-                try{chapters=source.getChapters(book.url).take(300);status="عُثر على ${chapters.size} فصل"}
-                catch(e:Exception){status="تعذر استخراج الفصول: ${e.localizedMessage}"}finally{busy=false}}
+                try{chapters=source.getChapters(book.url).take(300);status="عُثر على ${chapters.size} فصل";motion.show(ZZMotionAssets.sourceSaved,"اكتمل فحص الفصول")}
+                catch(e:Exception){status="تعذر استخراج الفصول: ${e.localizedMessage}";motion.show(ZZMotionAssets.failed,"تعذّر استخراج الفصول")}finally{busy=false}}
         },Modifier.fillMaxWidth(),selected=true)
         if(status.isNotBlank())Text(status,color=if(status.startsWith("فشل")||status.startsWith("تعذر"))Color(0xFFFF748B) else LocalZzPalette.current.accent,fontSize=12.sp)
-        if(busy){LinearProgressIndicator(modifier=Modifier.fillMaxWidth(),color=accent)
+        if(busy){ZZMotion(com.mangazz.app.R.raw.xw_loading_bars,Modifier.size(44.dp),repeat=true)
+            LinearProgressIndicator(modifier=Modifier.fillMaxWidth(),color=accent)
             if(total>0) Text("$completed / $total صفحات",color=LocalZzPalette.current.secondary,fontSize=11.sp)
             V2Action("إلغاء العملية",{operation?.cancel();busy=false;status="تم إلغاء العملية"})
         }
@@ -70,8 +72,8 @@ import java.io.File
                 V2Action("قراءة",{
                     val source=configured()
                     if(source!=null)operation=scope.launch{busy=true;status="جارٍ جلب صفحات الفصل..."
-                        try{val found=source.getPages(chapter);if(found.isEmpty())status="لا توجد صفحات" else {onReadRemote(found,chapter.title);status="${found.size} صفحة"}}
-                        catch(e:Exception){status=e.localizedMessage?:"تعذر قراءة الفصل"}finally{busy=false}}
+                        try{val found=source.getPages(chapter);if(found.isEmpty())status="لا توجد صفحات" else {onReadRemote(found,chapter.title);status="${found.size} صفحة";motion.show(ZZMotionAssets.pageFlip,"تم فتح الفصل")}}
+                        catch(e:Exception){status=e.localizedMessage?:"تعذر قراءة الفصل";motion.show(ZZMotionAssets.failed,"تعذّر فتح الفصل")}finally{busy=false}}
                 },Modifier.weight(1f))
                 V2Action("تنزيل",{
                     val source=configured()
@@ -82,11 +84,12 @@ import java.io.File
                             if(found.isEmpty()){status="لا توجد صفحات"}else{
                                 val dir=store.downloadChapter(chapter.id,chapter.title,found,"MangaZZ/0.2 Android"){done,size->completed=done;total=size}
                                 onDownloadComplete(chapter.title,store.getLocalPageFiles(chapter.id))
+                                motion.show(ZZMotionAssets.downloadCompleted,"اكتمل تنزيل الفصل")
                                 cbzToShare=store.exportCbz(chapter.id)
                                 status="تم تنزيل ${store.getLocalPageFiles(chapter.id).size} صفحة؛ تصدير CBZ متاح أدناه"
                             }
                         }catch(e:CancellationException){status="تم إيقاف التنزيل";throw e}
-                        catch(e:Exception){status="فشل التنزيل: ${e.localizedMessage}"}finally{busy=false}}
+                        catch(e:Exception){status="فشل التنزيل: ${e.localizedMessage}";motion.show(ZZMotionAssets.failed,"فشل تنزيل الفصل")}finally{busy=false}}
                 },Modifier.weight(1f))
             }
         }

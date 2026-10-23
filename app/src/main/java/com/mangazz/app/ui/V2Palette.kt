@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -50,11 +52,17 @@ val LocalZzPalette = staticCompositionLocalOf { v2Palette("blue") }
     Column(modifier.background(Brush.verticalGradient(listOf(p.surface,p.background)),RoundedCornerShape(18.dp))
         .border(BorderStroke(1.dp,p.border),RoundedCornerShape(18.dp)).padding(14.dp),content=content)
 }
-@Composable fun V2Action(title:String,onClick:()->Unit,modifier:Modifier=Modifier,selected:Boolean=false){
+@Composable fun V2Action(title:String,onClick:()->Unit,modifier:Modifier=Modifier,selected:Boolean=false,iconRes:Int?=null){
     val p=LocalZzPalette.current
     Box(modifier.background(if(selected)p.accentSoft else p.surface,RoundedCornerShape(13.dp))
         .border(1.dp,if(selected)p.accent else p.border,RoundedCornerShape(13.dp))
         .clickable(onClick=onClick).padding(horizontal=13.dp, vertical=12.dp)){
-        Text(title,color=p.text,fontSize=13.sp,fontWeight=if(selected)FontWeight.SemiBold else FontWeight.Normal)
+        Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically){
+            if(iconRes!=null){
+                Icon(painterResource(iconRes),contentDescription=null,tint=if(selected)p.accent else p.secondary,modifier=Modifier.size(19.dp))
+                Spacer(Modifier.width(5.dp))
+            }
+            Text(title,color=p.text,fontSize=13.sp,fontWeight=if(selected)FontWeight.SemiBold else FontWeight.Normal)
+        }
     }
 }

@@ -27,6 +27,7 @@ private class ZZTab(val id:String=UUID.randomUUID().toString(), val web:WebView,
 @SuppressLint("SetJavaScriptEnabled")
 @Composable fun BrowserScreen(initialUrl:String,accent:Color,onSave:(String,String)->Unit,onDownload:(String)->Unit={}){
     val ctx=LocalContext.current
+    val motion=LocalZZMotionController.current
     val tabs=remember { mutableStateListOf<ZZTab>() }
     var active by remember { mutableIntStateOf(0) }
     var input by remember { mutableStateOf(initialUrl) }
@@ -35,7 +36,7 @@ private class ZZTab(val id:String=UUID.randomUUID().toString(), val web:WebView,
     var fullscreen by remember{mutableStateOf(false)}
     var error by remember{mutableStateOf("")}
     fun addTab(url:String){
-        val validated=runCatching{safeWebUrl(url)}.getOrElse{error="الرابط يجب أن يبدأ بـ HTTPS";return}
+        val validated=runCatching{safeWebUrl(url)}.getOrElse{error="الرابط يجب أن يبدأ بـ HTTPS";motion.show(ZZMotionAssets.failed,"الرابط غير صالح");return}
         val web=WebView(ctx).apply {
             settings.javaScriptEnabled=true
             settings.domStorageEnabled=true
@@ -49,7 +50,7 @@ private class ZZTab(val id:String=UUID.randomUUID().toString(), val web:WebView,
             webViewClient=object:WebViewClient(){
                 override fun onPageStarted(view:WebView?,url:String?,favicon:Bitmap?){load=5;error="";if(url!=null)input=url}
                 override fun onPageFinished(view:WebView?,url:String?){load=100;title=view?.title?:"موقع مانجا";if(url!=null)input=url}
-                override fun onReceivedError(view:WebView?,request:WebResourceRequest?,e:WebResourceError?){if(request?.isForMainFrame==true)error="تعذر تحميل الموقع. تأكد من الشبكة وإمكانية عرض الموقع داخل WebView."}
+                override fun onReceivedError(view:WebView?,request:WebResourceRequest?,e:WebResourceError?){if(request?.isForMainFrame==true)error="تعذر تحميل الموقع. تأكد من الشبكة وإمكانية عرض الموقع داخل WebView.";motion.show(ZZMotionAssets.failed,"فشل فتح الموقع")}
                 override fun shouldOverrideUrlLoading(view:WebView?,request:WebResourceRequest?):Boolean{
                     val u=request?.url?:return false
                     return u.scheme !in setOf("https")
@@ -58,7 +59,7 @@ private class ZZTab(val id:String=UUID.randomUUID().toString(), val web:WebView,
             webChromeClient=object:WebChromeClient(){override fun onProgressChanged(view:WebView?,newProgress:Int){load=newProgress}}
             loadUrl(validated)
         }
-        tabs.add(ZZTab(web=web,url=validated));active=tabs.lastIndex;input=validated
+        tabs.add(ZZTab(web=web,url=validated));active=tabs.lastIndex;input=validated;motion.show(ZZMotionAssets.tabSwitch,"تبويب جديد")
     }
     DisposableEffect(Unit){
         onDispose { tabs.forEach { t->t.web.stopLoading();(t.web.parent as? ViewGroup)?.removeView(t.web);t.web.destroy() };tabs.clear() }
@@ -68,7 +69,7 @@ private class ZZTab(val id:String=UUID.randomUUID().toString(), val web:WebView,
         else if(tabs.getOrNull(active)?.web?.url!=initialUrl) addTab(initialUrl)
     }
     val tab=tabs.getOrNull(active)
-    fun select(index:Int){active=index;val selected=tabs.getOrNull(index);input=selected?.web?.url?:selected?.url.orEmpty();title=selected?.web?.title?:"موقع مانجا"}
+    fun select(index:Int){if(active!=index)motion.show(ZZMotionAssets.tabSwitch,"تم تبديل التبويب");active=index;val selected=tabs.getOrNull(index);input=selected?.web?.url?:selected?.url.orEmpty();title=selected?.web?.title?:"موقع مانجا"}
     BackHandler(enabled=tab?.web?.canGoBack()==true){tab?.web?.goBack()}
     Column(Modifier.fillMaxSize().padding(horizontal=8.dp)){
         if(!fullscreen){
@@ -91,7 +92,10 @@ private class ZZTab(val id:String=UUID.randomUUID().toString(), val web:WebView,
                 IconButton(onClick={fullscreen=true}){Icon(Icons.Default.Fullscreen,"ملء الشاشة",tint=TextBright)}
             }
         } else Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End){IconButton(onClick={fullscreen=false}){Icon(Icons.Default.FullscreenExit,"إظهار الأدوات",tint=accent)}}
-        AnimatedVisibility(load in 1..99){LinearProgressIndicator(progress={load/100f},modifier=Modifier.fillMaxWidth(),color=accent)}
+        AnimatedVisibility(load in 1..99){Row(verticalAlignment=Alignment.CenterVertically){
+            ZZMotion(com.mangazz.app.R.raw.xw_loading_orbit,Modifier.size(32.dp),repeat=true)
+            LinearProgressIndicator(progress={load/100f},modifier=Modifier.weight(1f),color=accent)
+        }}
         if(error.isNotBlank()) Text(error,color=Color(0xFFFF788C),fontSize=12.sp,modifier=Modifier.padding(8.dp))
         // Each WebView instance remains alive while other tabs are selected.
         if(tab!=null) key(tab.id) { AndroidView(factory={
@@ -101,8 +105,8 @@ private class ZZTab(val id:String=UUID.randomUUID().toString(), val web:WebView,
             if(view!==tab.web){ /* AndroidView is keyed with the tab ID below; no redirect needed. */ }
         },modifier=Modifier.weight(1f).fillMaxWidth().background(Color.White)) }
         if(!fullscreen && tab!=null) Row(Modifier.fillMaxWidth().padding(vertical=7.dp),horizontalArrangement=Arrangement.spacedBy(7.dp)) {
-            NeonButton("حفظ في المكتبة",accent,{onSave(tab.web.title?:"صفحة مانجا",tab.web.url?:input)},Modifier.weight(1f),selected=true)
-            NeonButton("تنزيل الرابط",accent,{onDownload(tab.web.url?:input)},Modifier.weight(1f))
+            ZZIconAction("حفظ في المكتبة",com.mangazz.app.R.drawable.ic_zz_save,{onSave(tab.web.title?:"صفحة مانجا",tab.web.url?:input)},Modifier.weight(1f),selected=true)
+            ZZIconAction("تنزيل الرابط",com.mangazz.app.R.drawable.ic_zz_download,{onDownload(tab.web.url?:input)},Modifier.weight(1f))
         }
     }
 }

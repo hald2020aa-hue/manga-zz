@@ -39,7 +39,7 @@ import com.mangazz.app.ui.*
         Text("${books.size} عمل محفوظ • ${books.count{it.favorite}} مفضلة",color=pal.secondary,fontSize=12.sp)
         ZZTextField(search,{search=it},"ابحث في مكتبتك",Modifier.fillMaxWidth())
         Row(horizontalArrangement=Arrangement.spacedBy(7.dp),modifier=Modifier.padding(vertical=7.dp)){
-            V2Action("＋ إضافة عمل",{showAdd=true},Modifier.weight(1f),selected=true)
+            V2Action("＋ إضافة عمل",{showAdd=true},Modifier.weight(1f),selected=true,iconRes=com.mangazz.app.R.drawable.ic_zz_save)
             V2Action("＋ مجلد",{showFolder=true},Modifier.weight(1f))
         }
         Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(7.dp)){
@@ -59,7 +59,7 @@ import com.mangazz.app.ui.*
                 Text("${b.page} من ${b.pages} صفحة",color=pal.secondary,fontSize=11.sp)
                 if(b.pages>0)LinearProgressIndicator(progress={b.page.toFloat()/b.pages.coerceAtLeast(1)},color=pal.accent,modifier=Modifier.fillMaxWidth())
                 Row(horizontalArrangement=Arrangement.spacedBy(4.dp)){
-                    V2Action(if(b.favorite)"♥" else "♡",{onFavorite(b)},Modifier.weight(1f))
+                    V2Action(if(b.favorite)"♥" else "♡",{onFavorite(b)},Modifier.weight(1f),iconRes=com.mangazz.app.R.drawable.ic_zz_favorite)
                     V2Action("مجلد",{moving=b},Modifier.weight(1f))
                     V2Action("حذف",{deleting=b},Modifier.weight(1f))
                 }

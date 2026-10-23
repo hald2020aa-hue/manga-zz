@@ -32,16 +32,19 @@ import kotlinx.coroutines.launch
 
 @Composable fun ReaderScreen(book:Manga,pages:List<Page>,reading:String,accent:Color,onBack:()->Unit,onImport:()->Unit,onMode:(String)->Unit,onProgress:(Int)->Unit){
     val ctx=LocalContext.current
+    val motion=LocalZZMotionController.current
     var ocr by remember { mutableStateOf(false) }; var translated by remember { mutableStateOf(false) }
     var lang by remember { mutableStateOf("日本語") }
     var recognized by remember{mutableStateOf("")};var translateResult by remember{mutableStateOf("")};var error by remember{mutableStateOf("")}
     var current by remember(book.id,pages.size){ mutableIntStateOf(book.page.coerceIn(0,(pages.size-1).coerceAtLeast(0))) }
+    var lastAnimatedPage by remember(book.id){ mutableIntStateOf(-1) }
     val translator=remember { Translation.getClient(TranslatorOptions.Builder().setSourceLanguage(TranslateLanguage.JAPANESE).setTargetLanguage(TranslateLanguage.ARABIC).build()) }
     DisposableEffect(translator){onDispose{translator.close()}}
     fun scan(){
         val page=pages.getOrNull(current)?:return
         if(page.imageUri.startsWith("https://")){
             error="التعرف على النص يحتاج تنزيل الصفحة أولًا، وبعدها افتحها محليًا"
+            motion.show(ZZMotionAssets.failed,"نزّل الصفحة للتعرف على النص")
             return
         }
         recognized="جارٍ التعرف على النص...";translateResult="";error=""
@@ -55,15 +58,16 @@ import kotlinx.coroutines.launch
             }
             detector.process(image).addOnSuccessListener { r->
                 recognized=r.text.ifBlank{"لم يتم العثور على نص"}
+                if(r.text.isNotBlank() && !translated)motion.show(ZZMotionAssets.translationCompleted,"تم التعرف على النص")
                 if(translated && r.text.isNotBlank()){
                     val source=when(lang){"한국어"->TranslateLanguage.KOREAN;"中文"->TranslateLanguage.CHINESE;"English"->TranslateLanguage.ENGLISH;else->TranslateLanguage.JAPANESE}
                     val temp=Translation.getClient(TranslatorOptions.Builder().setSourceLanguage(source).setTargetLanguage(TranslateLanguage.ARABIC).build())
                     temp.downloadModelIfNeeded().addOnSuccessListener{
-                        temp.translate(r.text).addOnSuccessListener{translateResult=it}.addOnFailureListener{error="تعذر ترجمة النص"}.addOnCompleteListener{temp.close()}
-                    }.addOnFailureListener {error="تعذر تنزيل نموذج الترجمة. تحقق من اتصال الإنترنت.";temp.close()}
+                        temp.translate(r.text).addOnSuccessListener{translateResult=it;motion.show(ZZMotionAssets.translationCompleted,"اكتملت الترجمة العربية")}.addOnFailureListener{error="تعذر ترجمة النص";motion.show(ZZMotionAssets.failed,"فشلت الترجمة")}.addOnCompleteListener{temp.close()}
+                    }.addOnFailureListener {error="تعذر تنزيل نموذج الترجمة. تحقق من اتصال الإنترنت.";motion.show(ZZMotionAssets.failed,"نموذج الترجمة غير متاح");temp.close()}
                 }
-            }.addOnFailureListener{error="تعذر قراءة الصورة: ${it.localizedMessage}"}.addOnCompleteListener{detector.close()}
-        }catch(e:Exception){error=e.localizedMessage?:"تعذر قراءة الصورة"}
+            }.addOnFailureListener{error="تعذر قراءة الصورة: ${it.localizedMessage}";motion.show(ZZMotionAssets.failed,"فشل OCR")}.addOnCompleteListener{detector.close()}
+        }catch(e:Exception){error=e.localizedMessage?:"تعذر قراءة الصورة";motion.show(ZZMotionAssets.failed,"تعذّرت قراءة الصورة")}
     }
     Column(Modifier.fillMaxSize()){
         Row(Modifier.fillMaxWidth().padding(8.dp),verticalAlignment=Alignment.CenterVertically){
@@ -78,16 +82,16 @@ import kotlinx.coroutines.launch
         }else{
             if(reading=="عمودي"){
                 val scroll= androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex=current)
-                LaunchedEffect(scroll.firstVisibleItemIndex){ val i=scroll.firstVisibleItemIndex;current=i;onProgress(i+1) }
+                LaunchedEffect(scroll.firstVisibleItemIndex){ val i=scroll.firstVisibleItemIndex;if(i!=current || lastAnimatedPage==-1){if(lastAnimatedPage>=0 && lastAnimatedPage!=i)motion.show(ZZMotionAssets.pageFlip,"الصفحة ${i+1}");lastAnimatedPage=i;current=i;onProgress(i+1)} }
                 LazyColumn(Modifier.weight(1f),state=scroll){itemsIndexed(pages,key={_,p->p.position}){i,p-> ZoomPage(p.imageUri,Modifier.fillMaxWidth().heightIn(min=320.dp))}}
             }else{
                 val scroll= androidx.compose.foundation.lazy.rememberLazyListState(initialFirstVisibleItemIndex=current)
-                LaunchedEffect(scroll.firstVisibleItemIndex){ val i=scroll.firstVisibleItemIndex;current=i;onProgress(i+1) }
+                LaunchedEffect(scroll.firstVisibleItemIndex){ val i=scroll.firstVisibleItemIndex;if(i!=current || lastAnimatedPage==-1){if(lastAnimatedPage>=0 && lastAnimatedPage!=i)motion.show(ZZMotionAssets.pageFlip,"الصفحة ${i+1}");lastAnimatedPage=i;current=i;onProgress(i+1)} }
                 LazyRow(Modifier.weight(1f),state=scroll){itemsIndexed(pages,key={_,p->p.position}){_,p->ZoomPage(p.imageUri,Modifier.fillParentMaxWidth().fillMaxHeight())}}
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(6.dp)){
                 NeonButton(if(ocr)"OCR ●" else "OCR",accent,{ocr=!ocr; if(ocr)scan()},selected=ocr)
-                NeonButton(if(translated)"ترجمة العربية ●" else "ترجمة العربية",accent,{translated=!translated;if(translated){ocr=true;scan()}},selected=translated)
+                V2Action(if(translated)"ترجمة العربية ●" else "ترجمة العربية",{translated=!translated;if(translated){ocr=true;scan()}},selected=translated,iconRes=com.mangazz.app.R.drawable.ic_zz_translate)
                 listOf("日本語","한국어","中文","English").forEach{l->NeonButton(l,accent,{lang=l;if(ocr)scan()},selected=lang==l)}
             }
             if(ocr) Glass(Modifier.fillMaxWidth().heightIn(max=200.dp)){
